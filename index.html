@@ -1,0 +1,450 @@
+!doctype html
+html lang=fi
+head
+  meta charset=UTF-8 
+  meta name=viewport content=width=device-width, initial-scale=1.0 
+  titleTrump Runner - Offlinetitle
+  style
+    root {
+      --sky-1 #bde8ff;
+      --sky-2 #eef8ff;
+      --sand #efe2bf;
+      --line #2b2b2b;
+      --accent #d0312d;
+      --gold #f2c14e;
+    }
+
+     { box-sizing border-box; }
+
+    body {
+      margin 0;
+      min-height 100vh;
+      display grid;
+      place-items center;
+      background radial-gradient(circle at 20% 20%, #f8fcff, #dcefff 45%, #c3e4ff);
+      font-family Segoe UI, system-ui, -apple-system, sans-serif;
+      color #111;
+      user-select none;
+    }
+
+    .wrap {
+      width min(1000px, 96vw);
+      text-align center;
+    }
+
+    h1 {
+      margin 0 0 8px;
+      font-size clamp(1.2rem, 3vw, 2rem);
+      letter-spacing 0.03em;
+    }
+
+    p {
+      margin 0 0 12px;
+      opacity 0.85;
+      font-size 0.95rem;
+    }
+
+    canvas {
+      width 100%;
+      height auto;
+      border 3px solid var(--line);
+      border-radius 10px;
+      background linear-gradient(var(--sky-1), var(--sky-2) 70%, var(--sand) 70%);
+      box-shadow 0 10px 30px rgba(0, 0, 0, 0.14);
+      touch-action none;
+    }
+
+    .hud {
+      display flex;
+      justify-content space-between;
+      margin 8px 2px 0;
+      font-weight 700;
+      gap 8px;
+      flex-wrap wrap;
+      font-size 0.95rem;
+    }
+
+    .hint {
+      margin-top 6px;
+      font-size 0.85rem;
+      opacity 0.75;
+    }
+  style
+head
+body
+  div class=wrap
+    h1Trump Runner (Offline)h1
+    pVälilyönti  nuoli ylös  klikkaus = hyppy • Enter = uusi pelip
+    canvas id=game width=960 height=360 aria-label=Tasohyppelypelicanvas
+    div class=hud
+      div id=scorePisteet 0div
+      div id=bestEnnätys 0div
+      div id=stateTila Juokse!div
+    div
+    div class=hintTäysin itsenäinen HTML ei kirjastoja, ei ulkoisia tiedostoja.div
+  div
+
+  script
+    (() = {
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const scoreEl = document.getElementById('score');
+      const bestEl = document.getElementById('best');
+      const stateEl = document.getElementById('state');
+
+      const W = canvas.width;
+      const H = canvas.height;
+      const GROUND_Y = 255;
+      const GRAVITY = 0.65;
+      const JUMP_VELOCITY = -13;
+
+      const trump = {
+        x 120,
+        y GROUND_Y - 78,
+        w 56,
+        h 78,
+        vy 0,
+        onGround true,
+        frame 0
+      };
+
+      const state = {
+        running true,
+        score 0,
+        speed 6,
+        best Number(localStorage.getItem('trump-runner-best')  0),
+        obstacles [],
+        particles [],
+        clouds [
+          { x 120, y 60, s 1.1 },
+          { x 420, y 90, s 0.9 },
+          { x 780, y 55, s 1.3 }
+        ],
+        landmarks [],
+        nextObstacleIn 90
+      };
+
+      const landmarkTypes = ['eiffel', 'pyramid', 'arch'];
+      for (let i = 0; i  10; i++) {
+        state.landmarks.push({
+          type landmarkTypes[i % landmarkTypes.length],
+          x i  260,
+          h 45 + Math.random()  70,
+          w 55 + Math.random()  40
+        });
+      }
+
+      function reset() {
+        state.running = true;
+        state.score = 0;
+        state.speed = 6;
+        state.obstacles = [];
+        state.particles = [];
+        state.nextObstacleIn = 75;
+        trump.y = GROUND_Y - trump.h;
+        trump.vy = 0;
+        trump.onGround = true;
+        stateEl.textContent = 'Tila Juokse!';
+      }
+
+      function spawnObstacle() {
+        const roll = Math.random();
+        if (roll  0.34) {
+          state.obstacles.push({ type 'mini-pyramid', x W + 20, y GROUND_Y - 34, w 40, h 34 });
+        } else if (roll  0.67) {
+          state.obstacles.push({ type 'small-arch', x W + 20, y GROUND_Y - 52, w 52, h 52 });
+        } else {
+          state.obstacles.push({ type 'tower', x W + 20, y GROUND_Y - 68, w 42, h 68 });
+        }
+      }
+
+      function jump() {
+        if (!state.running) return;
+        if (trump.onGround) {
+          trump.vy = JUMP_VELOCITY;
+          trump.onGround = false;
+          for (let i = 0; i  8; i++) {
+            state.particles.push({
+              x trump.x + 20 + Math.random()  20,
+              y GROUND_Y - 4,
+              vx -1.5 + Math.random()  3,
+              vy -Math.random()  2,
+              life 18 + Math.random()  8
+            });
+          }
+        }
+      }
+
+      function drawCloud(x, y, s) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath();
+        ctx.arc(x, y, 15  s, 0, Math.PI  2);
+        ctx.arc(x + 18  s, y - 6  s, 18  s, 0, Math.PI  2);
+        ctx.arc(x + 38  s, y, 14  s, 0, Math.PI  2);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawLandmark(l) {
+        const baseY = GROUND_Y;
+        ctx.save();
+        ctx.translate(l.x, baseY);
+        ctx.globalAlpha = 0.42;
+        ctx.fillStyle = '#7f8a9d';
+
+        if (l.type === 'eiffel') {
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(l.w  2, -l.h);
+          ctx.lineTo(l.w, 0);
+          ctx.lineTo(l.w - 12, 0);
+          ctx.lineTo(l.w  2, -l.h + 16);
+          ctx.lineTo(12, 0);
+          ctx.closePath();
+          ctx.fill();
+        } else if (l.type === 'pyramid') {
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(l.w  2, -l.h);
+          ctx.lineTo(l.w, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillRect(l.w  0.23, -l.h  0.35, l.w  0.16, l.h  0.35);
+        } else {
+          ctx.fillRect(0, -l.h, 12, l.h);
+          ctx.fillRect(l.w - 12, -l.h, 12, l.h);
+          ctx.fillRect(0, -l.h, l.w, 12);
+        }
+
+        ctx.restore();
+      }
+
+      function drawTrump() {
+        const x = trump.x;
+        const y = trump.y;
+        const runOffset = trump.onGround  Math.sin(trump.frame  0.28)  2.5  0;
+
+         body suit
+        ctx.fillStyle = '#1d3d7c';
+        ctx.fillRect(x + 16, y + 24, 24, 35);
+
+         tie
+        ctx.fillStyle = '#d2202f';
+        ctx.beginPath();
+        ctx.moveTo(x + 28, y + 24);
+        ctx.lineTo(x + 24, y + 42);
+        ctx.lineTo(x + 32, y + 42);
+        ctx.closePath();
+        ctx.fill();
+
+         head
+        ctx.fillStyle = '#f2c79f';
+        ctx.fillRect(x + 14, y + 2, 28, 24);
+
+         hair
+        ctx.fillStyle = '#f2c14e';
+        ctx.beginPath();
+        ctx.moveTo(x + 12, y + 7);
+        ctx.lineTo(x + 42, y + 4);
+        ctx.lineTo(x + 35, y - 3);
+        ctx.lineTo(x + 18, y - 1);
+        ctx.closePath();
+        ctx.fill();
+
+         arms
+        ctx.fillStyle = '#1d3d7c';
+        ctx.fillRect(x + 8, y + 28, 8, 22);
+        ctx.fillRect(x + 40, y + 28, 8, 22);
+
+         legs
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x + 18, y + 58, 8, 18 + runOffset);
+        ctx.fillRect(x + 30, y + 58, 8, 18 - runOffset);
+
+         eye
+        ctx.fillStyle = '#111';
+        ctx.fillRect(x + 34, y + 12, 2, 2);
+      }
+
+      function drawObstacle(o) {
+        ctx.save();
+        ctx.translate(o.x, o.y);
+
+        if (o.type === 'mini-pyramid') {
+          ctx.fillStyle = '#c8a46a';
+          ctx.beginPath();
+          ctx.moveTo(0, o.h);
+          ctx.lineTo(o.w  2, 0);
+          ctx.lineTo(o.w, o.h);
+          ctx.closePath();
+          ctx.fill();
+        } else if (o.type === 'small-arch') {
+          ctx.fillStyle = '#adb0b8';
+          ctx.fillRect(0, 0, 12, o.h);
+          ctx.fillRect(o.w - 12, 0, 12, o.h);
+          ctx.fillRect(0, 0, o.w, 10);
+        } else {
+          ctx.fillStyle = '#8e98a8';
+          ctx.beginPath();
+          ctx.moveTo(o.w  2, 0);
+          ctx.lineTo(o.w, o.h);
+          ctx.lineTo(o.w - 10, o.h);
+          ctx.lineTo(o.w  2, 18);
+          ctx.lineTo(10, o.h);
+          ctx.lineTo(0, o.h);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      function collide(a, b) {
+        return a.x  b.x + b.w &&
+               a.x + a.w  b.x &&
+               a.y  b.y + b.h &&
+               a.y + a.h  b.y;
+      }
+
+      function update() {
+        trump.frame++;
+
+        state.clouds.forEach(c = {
+          c.x -= state.speed  0.15;
+          if (c.x  -80) c.x = W + 80;
+        });
+
+        state.landmarks.forEach(l = {
+          l.x -= state.speed  0.35;
+          if (l.x  -120) {
+            l.x = W + Math.random()  180;
+            l.type = landmarkTypes[(Math.random()  landmarkTypes.length)  0];
+            l.h = 45 + Math.random()  70;
+            l.w = 55 + Math.random()  40;
+          }
+        });
+
+        trump.vy += GRAVITY;
+        trump.y += trump.vy;
+
+        if (trump.y = GROUND_Y - trump.h) {
+          trump.y = GROUND_Y - trump.h;
+          trump.vy = 0;
+          trump.onGround = true;
+        }
+
+        state.nextObstacleIn--;
+        if (state.nextObstacleIn = 0) {
+          spawnObstacle();
+          state.nextObstacleIn = 55 + Math.random()  65 - Math.min(20, state.speed  2);
+        }
+
+        state.obstacles.forEach(o = { o.x -= state.speed; });
+        state.obstacles = state.obstacles.filter(o = o.x + o.w  -20);
+
+        state.particles.forEach(p = {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.15;
+          p.life -= 1;
+        });
+        state.particles = state.particles.filter(p = p.life  0);
+
+        const hitbox = {
+          x trump.x + 10,
+          y trump.y + 5,
+          w trump.w - 20,
+          h trump.h - 4
+        };
+
+        for (const o of state.obstacles) {
+          if (collide(hitbox, { x o.x, y o.y, w o.w, h o.h })) {
+            state.running = false;
+            state.best = Math.max(state.best, Math.floor(state.score));
+            localStorage.setItem('trump-runner-best', state.best);
+            stateEl.textContent = 'Tila Peli ohi — Enter aloittaa uudelleen';
+            break;
+          }
+        }
+
+        state.score += 0.1;
+        state.speed = Math.min(13, 6 + state.score  180);
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, W, H);
+
+         sun
+        ctx.fillStyle = 'rgba(255, 214, 102, 0.8)';
+        ctx.beginPath();
+        ctx.arc(860, 62, 30, 0, Math.PI  2);
+        ctx.fill();
+
+        state.clouds.forEach(c = drawCloud(c.x, c.y, c.s));
+        state.landmarks.forEach(drawLandmark);
+
+         ground
+        ctx.strokeStyle = '#4a4338';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, GROUND_Y);
+        ctx.lineTo(W, GROUND_Y);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(77, 67, 56, 0.25)';
+        ctx.beginPath();
+        for (let x = 0; x  W; x += 32) {
+          ctx.moveTo((x - (state.score  2 % 32)), GROUND_Y + 10 + (x % 64  2  0));
+          ctx.lineTo((x + 15 - (state.score  2 % 32)), GROUND_Y + 10 + (x % 64  2  0));
+        }
+        ctx.stroke();
+
+        state.obstacles.forEach(drawObstacle);
+        drawTrump();
+
+        for (const p of state.particles) {
+          ctx.fillStyle = `rgba(130, 110, 80, ${p.life  30})`;
+          ctx.fillRect(p.x, p.y, 3, 3);
+        }
+
+        scoreEl.textContent = `Pisteet ${Math.floor(state.score)}`;
+        bestEl.textContent = `Ennätys ${state.best}`;
+
+        if (!state.running) {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 40px Segoe UI';
+          ctx.textAlign = 'center';
+          ctx.fillText('GAME OVER', W  2, H  2 - 14);
+          ctx.font = '20px Segoe UI';
+          ctx.fillText('Paina Enter aloittaaksesi uudelleen', W  2, H  2 + 22);
+        }
+      }
+
+      function loop() {
+        if (state.running) update();
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      window.addEventListener('keydown', (e) = {
+        if (e.code === 'Space'  e.code === 'ArrowUp') {
+          e.preventDefault();
+          jump();
+        } else if (e.code === 'Enter' && !state.running) {
+          reset();
+        }
+      });
+
+      canvas.addEventListener('pointerdown', () = {
+        if (state.running) jump();
+        else reset();
+      });
+
+      bestEl.textContent = `Ennätys ${state.best}`;
+      loop();
+    })();
+  script
+body
+html
